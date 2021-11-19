@@ -33,7 +33,7 @@ registration     BIGINT,
 session_id       integer,
 song             TEXT,
 status           integer,
-ts               VARCHAR(50),
+ts               bigint,
 user_agent       TEXT,
 user_id          integer
 );
@@ -142,7 +142,7 @@ format as JSON 'auto'
 songplay_table_insert = ("""
 INSERT INTO fact_songplays (start_time, user_id, level, song_id, artist_id, session_id, location, user_agent)
 SELECT 
-        TIMESTAMP 'epoch' + e.ts/1000 * interval '1 second' as start_time
+        TIMESTAMP 'epoch' + e.ts/1000 * interval '1 second' as start_time,
         e.user_id,
         e.level,
         s.song_id,
@@ -152,17 +152,25 @@ SELECT
         e.user_agent
 from staging_events e
 JOIN staging_songs s ON e.song = s.title AND e.artist = s.artist_name
-where e.page='NexTSong';
+where e.page='NexTSong'
 """)
 
 user_table_insert = ("""
 INSERT INTO dim_users(user_id, first_name, last_name, gender, level)
-SELECT distinct(user_id) as user_id,
+SELECT distinct (user_id) user_id,
         first_name,
         last_name,
         gender,
         level
-FROM staging_events;
+FROM (select user_id,
+            first_name,
+            last_name,
+            gender,
+            level
+          from staging_events
+         where user_id is not Null) as temp
+ group by user_id, first_name, last_name, gender, level
+ order by user_id;
 """)
 
 song_table_insert = ("""
@@ -172,17 +180,17 @@ SELECT distinct(song_id) as song_id,
         artist_id,
         year,
         duration
-FROM staging_songs;
+FROM staging_songs
 """)
 
 artist_table_insert = ("""
-ISERT INTO dim_artists(artist_id, name, location, lattitude, longitude)
+INSERT INTO dim_artist(artist_id, name, location, lattitude, longitude)
 SELECT distinct(artist_id) as artist_id,
         artist_name,
         artist_location,
-        artist_lattitude,
+        artist_latitude,
         artist_longitude
-FROM staging_songs;
+FROM staging_songs
 """)
 
 time_table_insert = ("""
@@ -192,9 +200,9 @@ SELECT  start_time,
         extract(day from start_time),
         extract(week from start_time),
         extract(month from start_time),
-        extract(year from ts),
-        extract(weekday from ts)
-        FROM fact_songplays;        
+        extract(year from start_time),
+        extract(weekday from start_time)
+        FROM fact_songplays      
 """)
 
 # QUERY LISTS
